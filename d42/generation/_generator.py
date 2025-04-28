@@ -1,3 +1,4 @@
+import hashlib
 import json
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List
@@ -149,13 +150,22 @@ class Generator(SchemaVisitor[Any]):
                 seen_items: set[str] = set()
 
                 # На всякий случай чтобы не словили бесконечный цикл
-                attempts_left: int = length * 10
+                attempts_left: int = length * 20
 
                 while len(items) < length and attempts_left > 0:
                     candidate_item: Any = schema.props.type.__accept__(self, **kwargs)
 
                     try:
-                        key = json.dumps(candidate_item, sort_keys=True, default=str)
+                        # Тут происходит сериализация и оптимизация хранения обьектов
+                        # Так же тут мы обрабатываем случай как этот
+                        # schema.list(schema.list(schema.str('A'))).unique() (В данном кейсе без
+                        # данной обработки просто сгенерируется несколько списков с разной длиной
+                        # но с одинаковым наполнением
+                        normalized_candidate = candidate_item
+                        if isinstance(candidate_item, list):
+                            normalized_candidate = sorted(set(str(x) for x in candidate_item))
+                        serialized = json.dumps(normalized_candidate, sort_keys=True, default=str)
+                        key = hashlib.md5(serialized.encode("utf-8")).hexdigest()
                     except Exception as e:
                         raise ValueError(
                             f"Cannot serialize item for uniqueness check: {candidate_item}") from e
