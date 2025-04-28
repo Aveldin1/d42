@@ -1,6 +1,7 @@
 import hashlib
 import json
 from datetime import date, datetime, timedelta
+import random
 from typing import Any, Dict, List
 from uuid import UUID, uuid4
 
@@ -147,6 +148,28 @@ class Generator(SchemaVisitor[Any]):
             items: List[Any] = []
 
             if unique_enabled:
+                if isinstance(schema.props.type, AnySchema):
+                    available_types = schema.props.type.props.types
+                    if available_types is not Nil:
+                        all_possible_values = []
+
+                        for variant in available_types:
+                            value = variant.__accept__(self, **kwargs)
+                            all_possible_values.append(value)
+
+                        serialized_unique_values = list(
+                            {json.dumps(v, sort_keys=True) for v in all_possible_values})
+
+                        max_unique_count = len(serialized_unique_values)
+
+                        if length > max_unique_count:
+                            length = max_unique_count
+
+                        selected_serialized_items = random.sample(
+                            serialized_unique_values, k=length)
+
+                        return [json.loads(item) for item in selected_serialized_items]
+
                 seen_items: set[str] = set()
 
                 # На всякий случай чтобы не словили бесконечный цикл
@@ -176,11 +199,8 @@ class Generator(SchemaVisitor[Any]):
 
                     attempts_left -= 1
 
-                # Ошибка нужна для случаев как этот
-                # schema.list(schema.int.min(1).max(4)).len(5).unique() то есть когда не можем
-                # сгенерировать нужное количество уникальных элементов
-                if len(items) < length:
-                    raise RuntimeError("Failed to generate enough unique list items")
+                if len(items) == 0:
+                    raise RuntimeError("Failed to generate any unique list items")
 
                 return items
 

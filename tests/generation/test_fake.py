@@ -25,11 +25,21 @@ def test_fake_incorrect_type():
 
 
 def test_fake_unique_list():
+    # Кейсы
+    # sch = schema.list(
+    #     schema.str('test4') |
+    #     schema.str('test3') |
+    #     schema.str('test2') |
+    #     schema.str('test')
+    # ).len(0, ...).unique()
+    # sch = schema.list(schema.int.min(1).max(4)).len(5).unique()
+    # sch = schema.list(schema.list(schema.str('A'))).unique()
     with given:
         sch = schema.list(schema.int).unique()
 
     with when:
         result = fake(sch)
+        print(result)
 
     with then:
         assert isinstance(result, list)
