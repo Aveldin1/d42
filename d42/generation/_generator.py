@@ -140,7 +140,41 @@ class Generator(SchemaVisitor[Any]):
             length = self._random.random_int(min_length, max_length)
 
         if schema.props.type is not Nil:
-            return [schema.props.type.__accept__(self, **kwargs) for _ in range(length)]
+            unique_enabled: bool = schema.props.unique
+
+            items: List[Any] = []
+
+            if unique_enabled:
+                seen_items: set[str] = set()
+
+                # На всякий случай чтобы не словили бесконечный цикл
+                attempts_left: int = length * 10
+
+                while len(items) < length and attempts_left > 0:
+                    candidate_item: Any = schema.props.type.__accept__(self, **kwargs)
+
+                    try:
+                        key_item_as_str: str = str(candidate_item)
+                    except Exception as e:
+                        raise ValueError(
+                            f"Cannot serialize item for uniqueness check: {candidate_item}") from e
+
+                    if key_item_as_str not in seen_items:
+                        seen_items.add(key_item_as_str)
+                        items.append(candidate_item)
+
+                    attempts_left -= 1
+
+                # Ошибка нужна для случаев как этот
+                # schema.list(schema.int.min(1).max(4)).len(5).unique() то есть когда не можем
+                # сгенерировать нужное количество уникальных элементов
+                if len(items) < length:
+                    raise RuntimeError("Failed to generate enough unique list items")
+
+                return items
+
+            else:
+                return [schema.props.type.__accept__(self, **kwargs) for _ in range(length)]
 
         if is_length_specified:
             return [[] for _ in range(length)]
