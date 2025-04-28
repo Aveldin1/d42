@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List
 from uuid import UUID, uuid4
@@ -154,13 +155,13 @@ class Generator(SchemaVisitor[Any]):
                     candidate_item: Any = schema.props.type.__accept__(self, **kwargs)
 
                     try:
-                        key_item_as_str: str = str(candidate_item)
+                        key = json.dumps(candidate_item, sort_keys=True, default=str)
                     except Exception as e:
                         raise ValueError(
                             f"Cannot serialize item for uniqueness check: {candidate_item}") from e
 
-                    if key_item_as_str not in seen_items:
-                        seen_items.add(key_item_as_str)
+                    if key not in seen_items:
+                        seen_items.add(key)
                         items.append(candidate_item)
 
                     attempts_left -= 1
