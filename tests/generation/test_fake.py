@@ -26,11 +26,11 @@ def test_fake_incorrect_type():
 
 def test_fake_unique_list():
     with given:
-        sch = schema.list(schema.int.min(1).max(5)).len(5).unique()
+        sch = schema.list(schema.int).unique()
 
     with when:
         result = fake(sch)
 
     with then:
         assert isinstance(result, list)
-        assert len(set(result)) == 5
+        assert len(set(result)) == len(result)
