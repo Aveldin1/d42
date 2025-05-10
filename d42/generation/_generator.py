@@ -125,6 +125,12 @@ class Generator(SchemaVisitor[Any]):
                 if is_ellipsis(elem):
                     continue
                 elements.append(elem.__accept__(self, **kwargs))
+            if getattr(schema.props, "unique", False):
+                deduped = []
+                for v in elements:
+                    if all(v != existing for existing in deduped):
+                        deduped.append(v)
+                return deduped
             return elements
 
         is_length_specified = False
@@ -148,65 +154,45 @@ class Generator(SchemaVisitor[Any]):
             items: List[Any] = []
 
             if unique_enabled:
-                if isinstance(schema.props.type, AnySchema):
-                    available_types = schema.props.type.props.types
-                    if available_types is not Nil:
-                        all_possible_values = []
-
-                        for variant in available_types:
-                            value = variant.__accept__(self, **kwargs)
-                            all_possible_values.append(value)
-
-                        serialized_unique_values = list(
-                            {json.dumps(v, sort_keys=True) for v in all_possible_values})
-
-                        max_unique_count = len(serialized_unique_values)
-
-                        if length > max_unique_count:
-                            length = max_unique_count
-
-                        selected_serialized_items = random.sample(
-                            serialized_unique_values, k=length)
-
-                        return [json.loads(item) for item in selected_serialized_items]
-
-                seen_items: set[str] = set()
-
-                # На всякий случай чтобы не словили бесконечный цикл
+                seen_items: List[Any] = []
                 attempts_left: int = length * 20
 
                 while len(items) < length and attempts_left > 0:
-                    candidate_item: Any = schema.props.type.__accept__(self, **kwargs)
+                    candidate_item: Any = (
+                        schema.props.type.__accept__(self, **kwargs))
 
-                    try:
-                        # Тут происходит сериализация и оптимизация хранения обьектов
-                        # Так же тут мы обрабатываем случай как этот
-                        # schema.list(schema.list(schema.str('A'))).unique() (В данном кейсе без
-                        # данной обработки просто сгенерируется несколько списков с разной длиной
-                        # но с одинаковым наполнением
-                        normalized_candidate = candidate_item
-                        if isinstance(candidate_item, list):
-                            normalized_candidate = sorted(set(str(x) for x in candidate_item))
-                        serialized = json.dumps(normalized_candidate, sort_keys=True, default=str)
-                        key = hashlib.md5(serialized.encode("utf-8")).hexdigest()
-                    except Exception as e:
-                        raise ValueError(
-                            f"Cannot serialize item for uniqueness check: {candidate_item}") from e
-
-                    if key not in seen_items:
-                        seen_items.add(key)
+                    # Compare by value (no hashing or serialization)
+                    if all(candidate_item != seen for seen in seen_items):
                         items.append(candidate_item)
+                        seen_items.append(candidate_item)
 
                     attempts_left -= 1
 
-                if len(items) == 0:
-                    raise RuntimeError("Failed to generate any unique list items")
+                return items or [schema.props.type.__accept__(self, **kwargs)]
 
-                return items
+            return [schema.props.type.__accept__(self, **kwargs) for _ in range(length)]
 
-            else:
-                return [schema.props.type.__accept__(self, **kwargs) for _ in range(length)]
+        elif (getattr(schema.props, "unique", False) and (is_length_specified)
+              and ((schema.props.elements) == Nil
+                   and (schema.props.type) == Nil)):
 
+            result: List[List[str]] = []
+            seen: List[List[str]] = []
+            attempts_left = int(length * 10)
+
+            while len(result) < length and attempts_left > 0:
+                inner = [
+                    self._random.random_str(self._random.random_int(2, 5), STR_ALPHABET)
+                    for _ in range(self._random.random_int(0, 4))
+                ]
+
+                if all(inner != existing for existing in seen):
+                    result.append(inner)
+                    seen.append(inner)
+
+                attempts_left -= 1
+
+            return result or [[]]
         if is_length_specified:
             return [[] for _ in range(length)]
         return []

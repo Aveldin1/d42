@@ -31,11 +31,23 @@ def test_fake_unique_list():
     #     schema.str('test3') |
     #     schema.str('test2') |
     #     schema.str('test')
-    # ).len(0, ...).unique()
-    # sch = schema.list(schema.int.min(1).max(4)).len(5).unique()
+    # ).len(0, ...).unique() Result: [], ['test', 'test3', 'test2', 'test4']
+    # sch = schema.list(schema.int.min(1).max(4)).len(5).unique() Result: [2, 3, 1, 4]
+    # sch = schema.list(schema.float.min(1.0).max(4.0)).len(5).unique()
+    # Result: [2.692677923681043, 2.0229881219962698, 1.605519631046103,
+    # 3.6768269249998484, 3.4938458424646055]
     # sch = schema.list(schema.list(schema.str('A'))).unique()
+    # Result: [[], ['A', 'A', 'A', 'A', 'A', 'A']]
+    # sch = schema.list(schema.bytes | schema.none).unique()
+    # Result: [b' tB92qJshF MSVbn25f0JeBgXZ7'] or [b'', None]
+    # sch = schema.list.len(3).unique()
+    # Result: [['0mD', 'j7v'], ['3WJq', 'qZli', 'l0Y'], ['MiQ', 'oECs']]
+    # sch = schema.list([schema.int(1), schema.int(1)]).unique() Result: [1]
+    # sch = schema.list(schema.int(5)).unique()
+    # sch = schema.list(schema.int(5)).len(3).unique()
+    # sch = schema.list(schema.bool).len(3).unique()
     with given:
-        sch = schema.list(schema.int).unique()
+        sch = schema.list([schema.int(1), schema.int(1)]).unique()
 
     with when:
         result = fake(sch)
