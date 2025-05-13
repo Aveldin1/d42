@@ -126,7 +126,6 @@ class Generator(SchemaVisitor[Any]):
         require_internal_uniqueness: bool = False,
         require_strict_internal_uniqueness: bool = False,
     ) -> List[Any]:
-        import sys
 
         def has_duplicates(seq):
             for i in range(len(seq)):
@@ -227,7 +226,6 @@ class Generator(SchemaVisitor[Any]):
             length = self._random.random_int(min_length, max_length)
 
         if schema.props.type is not Nil:
-
             generate_fn: Callable[[], Any] = lambda: schema.props.type.__accept__(self, **kwargs)
 
             if schema.props.unique:
