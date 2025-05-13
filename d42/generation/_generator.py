@@ -239,9 +239,7 @@ class Generator(SchemaVisitor[Any]):
             def generate_random_inner():
                 return [
                     self._random.random_str(self._random.random_int(2, 5), STR_ALPHABET)
-                    for _ in range(self._random.random_int(0
-
-                                                           , 4))]
+                    for _ in range(self._random.random_int(0, 4))]
 
             return self.generate_unique_items(generate_random_inner, target_count=length)
 
