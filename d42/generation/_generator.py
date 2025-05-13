@@ -1,8 +1,9 @@
 import hashlib
 import json
+import sys
 from datetime import date, datetime, timedelta
 import random
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Callable
 from uuid import UUID, uuid4
 
 from niltype import Nil
@@ -118,20 +119,97 @@ class Generator(SchemaVisitor[Any]):
 
         return self._random.random_str(length, alphabet)
 
+    def generate_unique_items(
+        self,
+        generate_fn: Callable[[], Any],
+        target_count: int,
+        require_internal_uniqueness: bool = False,
+        require_strict_internal_uniqueness: bool = False,
+    ) -> List[Any]:
+        import sys
+
+        def has_duplicates(seq):
+            for i in range(len(seq)):
+                for j in range(i + 1, len(seq)):
+                    if seq[i] == seq[j]:
+                        return True
+            return False
+
+        result = []
+        seen_values = []
+
+        attempts_left = sys.getrecursionlimit()
+
+        while len(result) < target_count and attempts_left > 0:
+            candidate_item = generate_fn()
+
+            if isinstance(candidate_item, list):
+                if require_internal_uniqueness and has_duplicates(candidate_item):
+                    attempts_left -= 1
+                    continue
+
+                if (
+                    require_strict_internal_uniqueness and
+                    all(str(v) == str(candidate_item[0]) for v in candidate_item)
+                ):
+                    raise RuntimeError(
+                        "Cannot generate internally unique list from identical values")
+
+            if all(candidate_item != seen for seen in seen_values):
+                result.append(candidate_item)
+                seen_values.append(candidate_item)
+
+            attempts_left -= 1
+
+        if len(result) < target_count:
+            raise RuntimeError(
+                f"Failed to generate {target_count} unique items after {sys.getrecursionlimit()} attempts")
+
+        return result
+
     def visit_list(self, schema: ListSchema, **kwargs: Any) -> List[Any]:
         if schema.props.elements is not Nil:
-            elements = []
-            for elem in schema.props.elements:
-                if is_ellipsis(elem):
-                    continue
-                elements.append(elem.__accept__(self, **kwargs))
-            if getattr(schema.props, "unique", False):
-                deduped = []
-                for v in elements:
-                    if all(v != existing for existing in deduped):
-                        deduped.append(v)
-                return deduped
-            return elements
+            def generate_once():
+                return [
+                    elem.__accept__(self, **kwargs)
+                    for elem in schema.props.elements
+                    if not is_ellipsis(elem)
+                ]
+
+            if schema.props.unique:
+                elements_schemas = [e for e in schema.props.elements if not is_ellipsis(e)]
+                expected_len = len(elements_schemas)
+
+                all_same_schema = (
+                    expected_len >= 2 and
+                    all(str(elements_schemas[0]) == str(e) for e in elements_schemas)
+                )
+
+                strict_mode_needed = (
+                    expected_len >= 2 and
+                    all_same_schema and schema.props.unique
+                )
+                if schema.props.len is not Nil:
+                    return self._generate_unique_items(
+                        generate_fn=generate_once,
+                        target_count=schema.props.len,
+                        require_internal_uniqueness=True,
+                        require_strict_internal_uniqueness=strict_mode_needed,
+                    )
+
+                attempts_left = sys.getrecursionlimit()
+
+                while attempts_left > 0:
+                    candidate = generate_once()
+
+                    if len(set(map(str, candidate))) == len(candidate):
+                        return candidate
+
+                    attempts_left -= 1
+
+                raise RuntimeError("Failed to generate a list with unique internal values")
+
+            return generate_once()
 
         is_length_specified = False
         if schema.props.len is not Nil:
@@ -149,50 +227,24 @@ class Generator(SchemaVisitor[Any]):
             length = self._random.random_int(min_length, max_length)
 
         if schema.props.type is not Nil:
-            unique_enabled: bool = schema.props.unique
 
-            items: List[Any] = []
+            generate_fn: Callable[[], Any] = lambda: schema.props.type.__accept__(self, **kwargs)
 
-            if unique_enabled:
-                seen_items: List[Any] = []
-                attempts_left: int = length * 20
+            if schema.props.unique:
+                return self.generate_unique_items(generate_fn=generate_fn, target_count=length)
 
-                while len(items) < length and attempts_left > 0:
-                    candidate_item: Any = (
-                        schema.props.type.__accept__(self, **kwargs))
+            return [generate_fn() for _ in range(length)]
 
-                    # Compare by value (no hashing or serialization)
-                    if all(candidate_item != seen for seen in seen_items):
-                        items.append(candidate_item)
-                        seen_items.append(candidate_item)
-
-                    attempts_left -= 1
-
-                return items or [schema.props.type.__accept__(self, **kwargs)]
-
-            return [schema.props.type.__accept__(self, **kwargs) for _ in range(length)]
-
-        elif (getattr(schema.props, "unique", False) and (is_length_specified)
-              and ((schema.props.elements) == Nil
-                   and (schema.props.type) == Nil)):
-
-            result: List[List[str]] = []
-            seen: List[List[str]] = []
-            attempts_left = int(length * 10)
-
-            while len(result) < length and attempts_left > 0:
-                inner = [
+        elif schema.props.unique:
+            def generate_random_inner():
+                return [
                     self._random.random_str(self._random.random_int(2, 5), STR_ALPHABET)
-                    for _ in range(self._random.random_int(0, 4))
-                ]
+                    for _ in range(self._random.random_int(0
 
-                if all(inner != existing for existing in seen):
-                    result.append(inner)
-                    seen.append(inner)
+                                                           , 4))]
 
-                attempts_left -= 1
+            return self.generate_unique_items(generate_random_inner, target_count=length)
 
-            return result or [[]]
         if is_length_specified:
             return [[] for _ in range(length)]
         return []
